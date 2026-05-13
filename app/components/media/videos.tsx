@@ -5,9 +5,14 @@ import { Plus, Video, Edit3, Trash2, Play, X, Upload, Camera, Link as LinkIcon, 
 import { supabase } from '@/lib/supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation } from '@tanstack/react-query';
+import dynamic from 'next/dynamic';
+import type ReactPlayerType from 'react-player';
+
+const ReactPlayer = dynamic(() => import('react-player'), { ssr: false }) as unknown as typeof ReactPlayerType;
 
 interface VideoAsset {
     id: string;
+    video_url?: string;
     video?: string;
     url?: string;
     title: string;
@@ -20,24 +25,12 @@ interface VideoAsset {
 // Helper to check if a URL is a direct video file
 const isDirectVideoFile = (url: string) => {
     if (!url) return false;
-    return url.match(/\.(mp4|webm|ogg|mov)$|^https:\/\/.*\.supabase\.co\/storage\/v1\/object\/public\/.*/i);
+    // Check extension or Supabase public storage patterns
+    const isSupabase = url.includes('.supabase.co/storage/v1/object/public/');
+    const hasExtension = url.match(/\.(mp4|webm|ogg|mov|quicktime)$/i);
+    return isSupabase || hasExtension;
 };
 
-// Helper to convert standard video URLs to embed URLs
-const getEmbedUrl = (url: string) => {
-    if (!url) return null;
-    if (isDirectVideoFile(url)) return url; // Return direct for <video> tag
-    
-    // YouTube
-    const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:.*v\/|.*u\/\w\/|embed\/|watch\?v=))([\w-]{11})/);
-    if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1`;
-
-    // Vimeo
-    const vimeoMatch = url.match(/vimeo\.com\/(?:video\/|)(\d+)/);
-    if (vimeoMatch) return `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`;
-
-    return url;
-};
 
 const Videos = () => {
     const [videos, setVideos] = useState<VideoAsset[]>([]);
@@ -46,6 +39,7 @@ const Videos = () => {
     // UI State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [activeVideo, setActiveVideo] = useState<VideoAsset | null>(null);
+    const [isPlayerLoading, setIsPlayerLoading] = useState(true);
     const [uploadType, setUploadType] = useState<'link' | 'file'>('link');
     
     // Form State
@@ -64,7 +58,6 @@ const Videos = () => {
         const { data, error } = await supabase
             .from('videos')
             .select('*')
-            
             .order('created_at', { ascending: false });
         
         if (data) setVideos(data);
@@ -129,7 +122,6 @@ const Videos = () => {
                 video_url: finalVideoUrl,
                 category,
                 thumbnail: thumbnailUrl,
-            
             });
 
             if (dbError) throw dbError;
@@ -143,6 +135,16 @@ const Videos = () => {
             alert(`Error: ${err.message}`);
         }
     });
+
+    // Reset player loading state when active video changes
+    useEffect(() => {
+        if (activeVideo) {
+            setIsPlayerLoading(true);
+            // Fallback: if video hasn't loaded in 5 seconds, remove spinner anyway
+            const timer = setTimeout(() => setIsPlayerLoading(false), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [activeVideo]);
 
     const resetForm = () => {
         setTitle("");
@@ -216,20 +218,28 @@ const Videos = () => {
                                     <div className="cursor-pointer" onClick={() => setActiveVideo(item)}>
                                         <h3 className="text-lg font-black uppercase tracking-tighter leading-none mb-2 hover:text-accent-orange transition-colors">{item.title}</h3>
                                         <div className="flex items-center gap-2 text-white/30">
-                                            {isDirectVideoFile(item.url || item.video || "") ? <FileVideo className="w-3 h-3" /> : <LinkIcon className="w-3 h-3" />}
+                                            {isDirectVideoFile(item.video_url || item.url || item.video || "") ? <FileVideo className="w-3 h-3" /> : <LinkIcon className="w-3 h-3" />}
                                             <span className="text-[9px] font-bold uppercase tracking-widest truncate max-w-[200px]">
-                                                {item.url || item.video || 'No source found'}
+                                                {item.video_url || item.url || item.video || 'No source found'}
                                             </span>
                                         </div>
                                     </div>
-                                    <a 
-                                        href={item.url || item.video} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="p-3 rounded-2xl bg-white/5 hover:bg-accent-orange hover:text-white transition-all border border-white/5"
-                                    >
-                                        <ExternalLink className="w-4 h-4" />
-                                    </a>
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => setActiveVideo(item)}
+                                            className="p-3 rounded-2xl bg-accent-orange text-white transition-all border border-accent-orange/20 group/play"
+                                        >
+                                            <Play className="w-4 h-4 fill-current group-hover/play:scale-110 transition-transform" />
+                                        </button>
+                                        <a 
+                                            href={item.video_url || item.url || item.video} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all border border-white/5"
+                                        >
+                                            <ExternalLink className="w-4 h-4" />
+                                        </a>
+                                    </div>
                                 </div>
 
                                 <div className="flex items-center gap-3 pt-6 border-t border-white/5">
@@ -269,19 +279,35 @@ const Videos = () => {
                             exit={{ scale: 0.9, opacity: 0 }}
                             className="w-full max-w-6xl aspect-video rounded-3xl overflow-hidden shadow-[0_0_100px_rgba(255,87,34,0.15)] border border-white/10 relative bg-black"
                         >
-                            {isDirectVideoFile(activeVideo.url || activeVideo.video || "") ? (
+                            {isPlayerLoading && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-black">
+                                    <div className="w-12 h-12 border-4 border-accent-orange/20 border-t-accent-orange rounded-full animate-spin mb-4" />
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Broadcasting...</p>
+                                </div>
+                            )}
+
+                            {isDirectVideoFile(activeVideo.video_url || activeVideo.url || activeVideo.video || "") ? (
                                 <video 
-                                    src={activeVideo.url || activeVideo.video}
+                                    src={activeVideo.video_url || activeVideo.url || activeVideo.video}
                                     controls
                                     autoPlay
+                                    muted
+                                    playsInline
+                                    onLoadedData={() => setIsPlayerLoading(false)}
                                     className="w-full h-full object-contain"
                                 />
                             ) : (
-                                <iframe 
-                                    src={getEmbedUrl(activeVideo.url || activeVideo.video || "") || ""}
-                                    className="w-full h-full"
-                                    allow="autoplay; fullscreen; picture-in-picture"
-                                    allowFullScreen
+                                <ReactPlayer 
+                                    key={activeVideo.id}
+                                    url={activeVideo.video_url || activeVideo.url || activeVideo.video || ""}
+                                    controls
+                                    playing={true}
+                                    muted={true}
+                                    playsinline={true}
+                                    onReady={() => setIsPlayerLoading(false)}
+                                    width="100%"
+                                    height="100%"
+                                    style={{ position: 'absolute', top: 0, left: 0 }}
                                 />
                             )}
                         </motion.div>

@@ -4,12 +4,15 @@ import React, { useState, useEffect } from 'react';
 import Image from "next/image";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Music, ArrowRight, Disc, Award, Users, Globe, Mail, Link as LinkIcon } from "lucide-react";
+import { Play, Music, ArrowRight, Disc, Award, Users, Globe, Mail, Link as LinkIcon, X, FileVideo, ExternalLink } from "lucide-react";
 import { FaInstagram, FaFacebook, FaSpotify } from 'react-icons/fa6';
 import Navbar from "./components/Navbar";
 import Section from "./components/Section";
 import { supabase } from "@/lib/supabaseClient";
+import dynamic from 'next/dynamic';
+import type ReactPlayerType from 'react-player';
 
+const ReactPlayer = dynamic(() => import('react-player'), { ssr: false }) as unknown as typeof ReactPlayerType;
 
 import { cn } from "@/lib/utils";
 
@@ -26,22 +29,34 @@ interface Video {
     id: string;
     title: string;
     video_url: string;
-    thumbnail_url: string;
+    thumbnail: string;
+    category?: string;
+    url?: string;
 }
 
 interface GalleryItem {
     id: string;
    images: string;
    title: string;
-
 }
 
+// Helper to check if a URL is a direct video file
+const isDirectVideoFile = (url: string) => {
+  if (!url) return false;
+  const isSupabase = url.includes('.supabase.co/storage/v1/object/public/');
+  const hasExtension = url.match(/\.(mp4|webm|ogg|mov|quicktime)$/i);
+  return isSupabase || hasExtension;
+};
 
 export default function Home() {
   const [releases, setReleases] = useState<Release[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Video Lightbox State
+  const [activeVideo, setActiveVideo] = useState<Video | null>(null);
+  const [isPlayerLoading, setIsPlayerLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -52,10 +67,11 @@ export default function Home() {
         .order('release_date', { ascending: false })
         .limit(6);
       
-      // Fetch Videos
+      // Fetch Videos - Using correct 'videos' table
       const { data: videosData } = await supabase
-        .from('media')
+        .from('videos')
         .select('*')
+        .order('created_at', { ascending: false })
         .limit(4);
 
       // Fetch Gallery
@@ -67,8 +83,6 @@ export default function Home() {
       if (releasesData) setReleases(releasesData);
       if (videosData) setVideos(videosData);
       if (galleryData) {
-        // Map database fields to the new interface names
-         
         setGallery(galleryData);
       }
       
@@ -77,6 +91,15 @@ export default function Home() {
 
     fetchData();
   }, []);
+
+  // Reset player loading state when active video changes
+  useEffect(() => {
+    if (activeVideo) {
+      setIsPlayerLoading(true);
+      const timer = setTimeout(() => setIsPlayerLoading(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [activeVideo]);
 
   return (
     <main className="relative flex flex-col w-full">
@@ -89,9 +112,8 @@ export default function Home() {
           <Image
             src="/Alt-Image-1-S.webp"
             alt="Afrobuggy Artist Hero"
-
             fill
-            className=" object-cover  object-center  " /* brightness-75 grayscale-[20%] */
+            className="object-cover object-center"
             priority
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
@@ -333,9 +355,6 @@ export default function Home() {
         </div>
       </Section>
 
-      {/* 4. BRANDS & COLLABORATIONS */}
-      
-
       {/* 5. MEDIA (VIDEOS) */}
       <Section id="videos" className="bg-[#050505]">
         <div className="flex flex-col md:flex-row items-end justify-between mb-16 gap-6">
@@ -358,9 +377,10 @@ export default function Home() {
               viewport={{ once: true }}
               transition={{ delay: i * 0.1 }}
               className="group relative aspect-video rounded-[2.5rem] overflow-hidden glass border border-white/5 cursor-pointer shadow-2xl"
+              onClick={() => setActiveVideo(video)}
             >
               <img 
-                src={video.thumbnail_url} 
+                src={video.thumbnail} 
                 className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110 opacity-70 group-hover:opacity-100" 
                 alt={video.title} 
               />
@@ -372,8 +392,25 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="absolute inset-x-0 bottom-0 p-8 bg-gradient-to-t from-black to-transparent">
-                <h3 className="text-2xl font-black uppercase tracking-tighter text-white">{video.title}</h3>
+              <div className="absolute inset-x-0 bottom-0 p-8 bg-gradient-to-t from-black/80 to-transparent flex items-center justify-between">
+                <div>
+                  <h3 className="text-2xl font-black uppercase tracking-tighter text-white">{video.title}</h3>
+                  <div className="flex items-center gap-2 text-white/40 mt-1">
+                    {isDirectVideoFile(video.video_url || video.url || "") ? <FileVideo className="w-3 h-3" /> : <LinkIcon className="w-3 h-3" />}
+                    <span className="text-[8px] font-bold uppercase tracking-widest">
+                      {video.video_url || video.url || 'Studio Visual'}
+                    </span>
+                  </div>
+                </div>
+                <a 
+                  href={video.video_url || video.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-4 rounded-2xl bg-white/10 hover:bg-white text-white hover:text-black transition-all border border-white/10"
+                >
+                  <ExternalLink className="w-5 h-5" />
+                </a>
               </div>
             </motion.div>
           ))}
@@ -617,6 +654,46 @@ export default function Home() {
           </div>
         </div>
       </footer>
+
+      {/* Video Player Lightbox */}
+      <AnimatePresence>
+        {activeVideo && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/95 backdrop-blur-xl"
+          >
+            <button onClick={() => setActiveVideo(null)} className="absolute top-8 right-8 text-white/50 hover:text-white">
+              <X className="w-10 h-10" />
+            </button>
+            <div className="w-full max-w-6xl aspect-video rounded-3xl overflow-hidden relative bg-black shadow-2xl">
+              {isPlayerLoading && (
+                <div className="absolute inset-0 flex items-center justify-center z-10 bg-black">
+                  <div className="w-12 h-12 border-4 border-accent-orange/20 border-t-accent-orange rounded-full animate-spin" />
+                </div>
+              )}
+              {isDirectVideoFile(activeVideo.video_url || activeVideo.url || "") ? (
+                <video 
+                  src={activeVideo.video_url || activeVideo.url} 
+                  controls autoPlay muted playsInline 
+                  onLoadedData={() => setIsPlayerLoading(false)} 
+                  className="w-full h-full object-contain" 
+                />
+              ) : (
+                <ReactPlayer 
+                  key={activeVideo.id} 
+                  url={activeVideo.video_url || activeVideo.url || ""} 
+                  controls playing muted playsinline 
+                  onReady={() => setIsPlayerLoading(false)} 
+                  width="100%" height="100%" 
+                  style={{ position: 'absolute', top: 0, left: 0 }} 
+                />
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
