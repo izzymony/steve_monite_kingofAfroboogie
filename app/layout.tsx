@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next"
 import "./globals.css";
 import {Providers} from "./components/provider";
 
@@ -24,6 +25,7 @@ export default function RootLayout({
       <body className={`${outfit.variable} font-sans min-h-full flex flex-col bg-black text-white`}>
         <div className="fixed inset-0 bg-grain pointer-events-none z-50 opacity-20" />
         {children}
+        <Analytics />
       </body>
       </Providers>
     </html>
