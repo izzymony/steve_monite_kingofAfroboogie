@@ -32,7 +32,7 @@ const BackgroundMusic = ({play}: Props) => {
   },[play])
   return (
     <audio ref={audioRef} loop preload="auto">
-      <source src="/audio/instagram Reel.wav" type="audio/mpeg" />
+      <source src="/audio/onlyyou.wav" type="audio/mpeg" />
     </audio>
   )
 }
