@@ -11,8 +11,8 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Afrobuggy Artist | Premium Portfolio",
-  description: "Experience the cinematic world of the ultimate Afrobuggy music artist. Immersive, energetic, and professionally branded.",
+  title: "stevemoniterecords |Afroboogie | Premium Portfolio",
+  description: "Experience the cinematic world of the ultimate Afroboogie music artist. Immersive, energetic, and professionally branded.",
   verification:{
     google: 'xkcMaoBItSQFgmH3tf5CTDFMQr9ZF6qYuKSz64STX4c',
   }

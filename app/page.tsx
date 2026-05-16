@@ -11,6 +11,8 @@ import Section from "./components/Section";
 import { supabase } from "@/lib/supabaseClient";
 import dynamic from 'next/dynamic';
 import type ReactPlayerType from 'react-player';
+import IntroScreen from './components/IntroScreen';
+import BackgroundMusic from './components/backgrounMusic';
 
 const ReactPlayer = dynamic(() => import('react-player'), { ssr: false }) as any;
 
@@ -53,6 +55,7 @@ export default function Home() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [entered, setEntered] = useState(false);
 
   // Video Lightbox State
   const [activeVideo, setActiveVideo] = useState<Video | null>(null);
@@ -92,6 +95,18 @@ export default function Home() {
     fetchData();
   }, []);
 
+  // Lock scroll when intro is active
+  useEffect(() => {
+    if (!entered) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [entered]);
+
   // Reset player loading state when active video changes
   useEffect(() => {
     if (activeVideo) {
@@ -103,6 +118,9 @@ export default function Home() {
 
   return (
     <main className="relative flex flex-col w-full">
+      <IntroScreen entered={entered} onEnter={() => setEntered(true)} />
+      <BackgroundMusic play={entered} />
+      
       <Navbar />
 
       {/* 1. HERO SECTION */}
@@ -315,7 +333,7 @@ export default function Home() {
 
               {/* Scrollable Narrative Container */}
               <div className="relative group">
-                <div className="max-h-[500px] overflow-y-auto pr-8 space-y-6 text-white/60 text-lg font-medium leading-relaxed custom-scrollbar">
+                <div className="max-h-[500px] overflow-y-auto scrollbar-hide pr-8 space-y-6 text-white/60 text-lg font-medium leading-relaxed custom-scrollbar " style={{scrollbarWidth: "none"}}>
                   <p className="first-letter:text-6xl first-letter:font-black first-letter:text-accent-orange first-letter:mr-3 first-letter:float-left first-letter:mt-2">
                     My journey into music did not begin with a record deal or a studio session. It began in the pews of an Anglican church on Ozah Street in Benin City, where, as a young boy, I learned the power of listening. Sunday after Sunday, we were taught not only how to sing, but also how to write songs — though at the time, most of them were rooted in gospel and religious music.
                   </p>
